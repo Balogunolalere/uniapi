@@ -5,6 +5,7 @@ from docarray import DocumentArray, Document
 from clip_client import Client
 from annlite import AnnLite
 from time import sleep
+import asyncio
 
 
 # Load data from a gzipped JSON file
@@ -31,7 +32,7 @@ documents = [Document(text=data_['Full Name'][i], tags={'department': data_['DEP
 print("*** Documents created ***")
 
 # Create an AnnLite instance
-ann_da = AnnLite(n_dim=768,metric='cosine', data_path='./data', columns={'othernames': 'str', 'surname': 'str', 'institution': 'str', 'department': 'str', 'matric': 'str', 'dob': 'str', 'corps': 'str', 'jamb': 'str','state': 'str', 'sex' : 'str'})
+ann_da = AnnLite(n_dim=768,metric='cosine', data_path='./data_', columns={'othernames': 'str', 'surname': 'str', 'institution': 'str', 'department': 'str', 'matric': 'str', 'dob': 'str', 'corps': 'str', 'jamb': 'str','state': 'str', 'sex' : 'str'})
 print("*** AnnLite instance created ***")
 
 
@@ -40,40 +41,34 @@ c = Client(
     'grpcs://api.clip.jina.ai:2096', credential={'Authorization': '991e3e1eb7c84a1242644521a948e6be'}
 )
 
+# didvide documents into 8 batches and asynchronously encode each batch and index into ann
+da1 = documents[0:352686]
+da2 = documents[352686:705372]
+da3 = documents[705372:1058058]
+da4 = documents[1058058:1410744]
+da5 = documents[1410744:1763430]
+da6 = documents[1763430:2116116]
+da7 = documents[2116116:2468802]
+da8 = documents[2468802:2821489]
 
-# Split the list of documents into smaller chunks
-chunk_size = 3000
-num_chunks = len(documents) // chunk_size + 1
 
-# start_index = 202
+# for each batch, break into chunks of 1000 and encode each chunk and index into ann at the same time
 
-# for i in range(num_chunks):
-#     if i < start_index:
-#         continue
-#     start = i * chunk_size
-#     end = (i + 1) * chunk_size
-#     da = DocumentArray(documents[start:end])
-#     # Process the current chunk of DocumentArray here
-#     encoded_da = c.encode(da, show_progress=True)
-#     ann_da.index(encoded_da)
-#     print(f'Processed chunk {i + 1} of {num_chunks}')
+def encode(da):
+    for i in range(0, len(da), 1000):
+        print(f"Encoding batch {i}")
+        encoded = c.encode(da[i:i+1000])
+        print("Encoding done")
+        return encoded
 
-last_processed = 0
 
-for i in range(num_chunks):
-    try:
-        start = i * chunk_size
-        end = (i + 1) * chunk_size
-        da = DocumentArray(documents[start:end])
-        # Process the current chunk of DocumentArray here
-        encoded_da = c.encode(da, show_progress=True)
-        ann_da.index(encoded_da)
-        print(f'Processed chunk {i + 1} of {num_chunks}')
-        last_processed = i + 1
-    except Exception as e:
-        print(f'Encoding failed: {e}')
-        print(f'Sleeping for 10 minutes and retrying...')
-        sleep(10)
-        i = last_processed - 1
+async def index(da):
+    print("Indexing")
+    ann_da.index(encode(da))
+    print("Indexing done")
 
-    
+async def main():
+    await asyncio.gather(index(da1), index(da2), index(da3), index(da4), index(da5), index(da6), index(da7), index(da8))
+
+asyncio.run(main())
+
